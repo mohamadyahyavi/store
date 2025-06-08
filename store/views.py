@@ -2,7 +2,7 @@ from django.shortcuts import render
 from django.db.models import Count
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.decorators import api_view
-from rest_framework.permissions import IsAuthenticated,AllowAny 
+from rest_framework.permissions import IsAuthenticated,AllowAny,IsAdminUser,DjangoModelPermissions
 from rest_framework.filters import SearchFilter,OrderingFilter
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.viewsets import ModelViewSet,GenericViewSet
@@ -10,9 +10,11 @@ from rest_framework.mixins import CreateModelMixin
 from rest_framework.decorators import action
 from rest_framework.mixins import ListModelMixin,CreateModelMixin,RetrieveModelMixin,DestroyModelMixin,UpdateModelMixin
 from rest_framework.response import Response
-from .models import Product,Collection,Review,Cart,CartItem,Customer
+from .models import Product,Collection,Review,Cart,CartItem,Customer,Order
+from .permissions import IsAdminOrReadOnly,ViewCustomerHistoryPermission
+from .permissions import FullDjangoModelPermissions
 from .filters import ProductFilter
-from .serializers import ProductSerializer,CollectionSerializer,ReviewSerializer,CartSerializer,CartItemSerializer,AddCartItemSerializer,UpdateCartItemSerializer,CustomerSerializer
+from .serializers import ProductSerializer,CollectionSerializer,ReviewSerializer,CartSerializer,CartItemSerializer,AddCartItemSerializer,UpdateCartItemSerializer,CustomerSerializer,OrderSerializer,CreateOrderSerializer
 
 class ProductViewSet(ModelViewSet):
       
@@ -22,6 +24,7 @@ class ProductViewSet(ModelViewSet):
       filter_backends=[DjangoFilterBackend,SearchFilter,OrderingFilter]
       filterset_class=ProductFilter
       pagination_class=PageNumberPagination
+      permission_classes=[IsAdminOrReadOnly]
       search_fields=['title','description']
       ordering_fields=['unit_price','last_update']
       
@@ -42,6 +45,7 @@ class CollectionViewSet(ModelViewSet):
            
            products_count=Count('products')).all()
       serializer_class=CollectionSerializer
+      permission_classes=[IsAdminOrReadOnly]
 
       def delete(self,request,pk):
            collection=Collection.objects.get(pk=pk)
@@ -88,21 +92,20 @@ class CartItemViewSet(ModelViewSet):
      def get_queryset(self):
         return CartItem.objects.filter(cart_id=self.kwargs['cart_pk']).select_related('cart', 'product')
 
-class CustomerViewSet(CreateModelMixin,RetrieveModelMixin,UpdateModelMixin,GenericViewSet):
+class CustomerViewSet(ModelViewSet):
       
       queryset=Customer.objects.all()
       serializer_class=CustomerSerializer
-      permission_classes=[IsAuthenticated]
+      permission_classes=[IsAdminUser]
 
-
-      def get_permissions(self):
-           
-           if self.request.method=='GET':
-                
-               return [AllowAny()]
-           return [IsAuthenticated()]
       
-      @action(detail=False,methods=['GET','PUT'])
+      @action(detail=True,permission_classes=[ViewCustomerHistoryPermission])
+      def history(self,request,pk):
+
+          return Response('ok') 
+
+      
+      @action(detail=False,methods=['GET','PUT'],permission_classes=[IsAuthenticated])
       def me(self,request):
         
         (customer,created)=Customer.objects.get_or_create(user_id=request.user.id)
@@ -116,3 +119,31 @@ class CustomerViewSet(CreateModelMixin,RetrieveModelMixin,UpdateModelMixin,Gener
              serializer.save()
              return Response(serializer.data)
       
+
+class OrderViewSet(ModelViewSet):
+     
+     permission_classes=[IsAuthenticated]
+
+     def get_serializer_class(self):
+         if self.request.method == 'POST':
+
+            return CreateOrderSerializer
+         return OrderSerializer
+
+     def get_serializer_context(self):
+          return {'user_id': self.request.user.id}
+         
+
+     def get_queryset(self):
+
+          user=self.request.user
+
+          if user.is_staff:
+               return Order.objects.all()
+          
+          (customer_id,created)=Customer.objects.only('id').get_or_create(user_id=self.request.user.id)
+          return Order.objects.filter(customer_id=customer_id)
+          
+
+
+               

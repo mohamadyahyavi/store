@@ -143,16 +143,13 @@ STATIC_URL = '/static/'
 # https://docs.djangoproject.com/en/3.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
-REST_FRAMEWORK={
-    'COERCE_DECIMAL_TO_STRING':False,
-    'PAGE_SIZE':10,
+REST_FRAMEWORK = {
+    'COERCE_DECIMAL_TO_STRING': False,
+    'PAGE_SIZE': 10,
     'DEFAULT_AUTHENTICATION_CLASSES': (
+        'rest_framework.authentication.SessionAuthentication',  # <-- Add this
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     ),
-
-    'DEFAULT_PERMISSION_CLASSES': [
-        'rest_framework.permissions.IsAuthenticated'
-    ],
 }
 
 AUTH_USER_MODEL='core.User'
